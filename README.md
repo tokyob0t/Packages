@@ -1,9 +1,9 @@
 <h1 align="center">Packages</h1>
 
-A simple GTK+ application to manage packages from Arch Linux and community repositories.
+<p align="center">A simple GTK+ application to manage packages from Arch Linux and community repositories.</p>
 
 <p align="center">
-  <img src="data/screenshot.png" width="400">
+  <img src="data/screenshot.png" width="600">
 </p>
 
 ## Installation
