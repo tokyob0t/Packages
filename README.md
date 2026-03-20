@@ -3,7 +3,7 @@
 A simple GTK+ application to manage packages from Arch Linux and community repositories.
 
 <p align="center">
-  <img src="data/screenshot.png">
+  <img src="data/screenshot.png"> 
 </p>
 
 ## Installation
