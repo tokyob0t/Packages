@@ -1,0 +1,89 @@
+@use "sass:string";
+
+$bg: #{"@window_bg_color"};
+$bg-alt: #{"@card_bg_color"};
+$fg: #{"@window_fg_color"};
+$accent-color: #{"@accent_color"};
+$warning-color: #{"@warning_color"};
+$destructive-color: #{"@destructive_color"};
+$error-color: #{"@error_color"};
+$success-color: #{"@success_color"};
+$theme-fg-color: #{"@theme_fg_color"};
+
+@function alpha($color, $amount) {
+  @return string.unquote("alpha(#{$color},#{$amount})");
+}
+
+@mixin badge-color($color) {
+  background-color: alpha($color, 0.1);
+
+  &:hover {
+    background-color: alpha($color, 0.18);
+  }
+
+  &:active {
+    background-color: alpha($color, 0.26);
+  }
+
+  label {
+    color: $color;
+  }
+}
+
+.badge {
+  @include badge-color($fg);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 500;
+  outline: unset;
+
+  transition:
+    background-color 120ms ease,
+    transform 80ms ease;
+
+  min-height: 0;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+
+  label {
+    padding: 0;
+    margin: 0;
+    font-weight: 600;
+  }
+}
+
+.aur-badge-color {
+  // @include badge-color(#1793d1);
+  @include badge-color($accent-color);
+}
+
+.blackarch-badge-color {
+  @include badge-color(black);
+}
+
+.endeavouros-badge-color {
+  @include badge-color(#7f3fbf);
+}
+
+.lib-badge-color {
+  @include badge-color($success-color);
+}
+
+.git-badge-color {
+  @include badge-color($warning-color);
+}
+
+.third-party-badge-color {
+  @include badge-color($error-color);
+}
+
+.orphaned-badge-color {
+  @include badge-color($destructive-color);
+}

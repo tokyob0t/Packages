@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Packages
+Comment=Manage packages from Arch Linux and community repositories
+Icon=@APP_ID@
+Exec=packages %u
+Terminal=false
+Type=Application
+Categories=GTK;System;PackageManager;
+StartupNotify=true
+MimeType=x-scheme-handler/aur;
+Keywords=aur;packages;arch;build;pacman;
+X-GNOME-UsesNotifications=true
+X-GNOME-SingleWindow=true

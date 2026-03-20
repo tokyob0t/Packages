@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+    <schema id="@APP_ID@" path="@SCHEMA_PATH@/">
+    <key name="clean-deps-after-build" type="b">
+      <default>false</default>
+      <summary>Clean dependencies after build</summary>
+      <description>
+        If enabled, the application will remove build dependencies after completing a build.
+      </description>
+    </key>
+
+  </schema>
+</schemalist>

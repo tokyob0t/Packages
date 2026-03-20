@@ -1,0 +1,4 @@
+aiosqlite==0.22.1
+pyalpm==0.10.12
+pycairo==1.29.0
+PyGObject==3.56.1

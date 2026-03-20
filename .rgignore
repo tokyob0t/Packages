@@ -1,0 +1,5 @@
+/gengir/
+/venv/
+/build/
+/dist/
+**/__pycache__/

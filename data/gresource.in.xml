@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+    <gresource prefix="@SCHEMA_PATH@">
+      <file alias="styles.css" compressed="true">data/styles.css</file>
+      <file alias="icons/regex-symbolic.svg" preprocess="xml-stripblanks">../data/icons/regex-symbolic.svg</file>
+      <file alias="icons/linux-assistant-symbolic.svg" preprocess="xml-stripblanks">../data/icons/linux-assistant-symbolic.svg</file>
+      <file alias="icons/checkmark-small-symbolic.svg" preprocess="xml-stripblanks">../data/icons/checkmark-small-symbolic.svg</file>
+      <file alias="icons/cogged-wheel-symbolic.svg" preprocess="xml-stripblanks">../data/icons/cogged-wheel-symbolic.svg</file>
+    </gresource>
+</gresources>
