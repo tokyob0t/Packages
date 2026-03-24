@@ -7,10 +7,12 @@ from typing import List, Optional
 
 import aiosqlite
 from gi.repository import Gio, GLib
-from pyalpm import DB, Handle, Package
-from pypika import NULL, Column, Index, Order, Parameter
+from pyalpm import DB as PYALPM_DB
+from pyalpm import Handle, Package
+from pypika import NULL, Column, Index, Parameter
 from pypika import SQLLiteQuery as Query
 from pypika import Table
+from pypika import functions as SQL_FUNCTIONS
 from utils.requests import Requests as requests
 
 CACHE_DIR = os.path.expanduser('~/.cache/packages')
@@ -165,7 +167,8 @@ class IndexedPackage:
         )
 
     @classmethod
-    def from_pkg(cls: 'IndexedPackage', pkg: Package, repository_name: DB):
+    def from_pkg(cls: 'IndexedPackage', pkg: Package,
+                 repository_name: PYALPM_DB):
 
         return cls(
             name=pkg.name,
@@ -257,11 +260,12 @@ class PackageRepository(ABC):
 
 class PacmanRepository(PackageRepository):
     HANDLE = Handle('/', '/var/lib/pacman')
-    LOCALDB = HANDLE.get_localdb()
+    LOCALDB: PYALPM_DB = HANDLE.get_localdb()
 
     def __init__(self, name: str):
 
-        self.database: DB = PacmanRepository.HANDLE.register_syncdb(name, 0)
+        self.database: PYALPM_DB = PacmanRepository.HANDLE.register_syncdb(
+            name, 0)
 
     @property
     def name(self):
@@ -446,7 +450,7 @@ class PackageIndexer:
             q = q.where(pkgs.name.regexp(Parameter('?')))
             params.append(query)
 
-        else:
+        else:  # first token prefix match, remaining tokens substring match
             tokens = query.split()
 
             q = q.where(pkgs.name.like(Parameter('?')))
@@ -496,9 +500,29 @@ class PackageIndexer:
         async with self.db.execute(q.get_sql()) as cursor:
             return [IndexedPackage.from_row(row) async for row in cursor]
 
-    @property
-    def loaded_repositories(self) -> list[str]:
-        return [repo.name for repo in self.repositories]
+    async def get_installed_count(self) -> int:
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select(SQL_FUNCTIONS.Count('*')).where(
+            pkgs.installed_version.isnotnull())
+
+        async with self.db.execute(q.get_sql()) as cursor:
+            if row := await cursor.fetchone():
+                return row[0]
+        return -1
+
+    async def get_count(self) -> int:
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select(SQL_FUNCTIONS.Count("*"))
+
+        async with self.db.execute(q.get_sql()) as cursor:
+            if row := await cursor.fetchone():
+                return row[0]
+        return -1
+
+    def get_loaded_repositories(self) -> list[str]:
+        return list(repo.name for repo in self.repositories)
 
     @staticmethod
     async def get_default():
