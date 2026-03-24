@@ -28,6 +28,8 @@ PROPRIETARY = {
     'sspl', 'polyform', 'chrome', 'custom'
 }
 
+FONT_PREFIXES = ('ttf-', 'woff-', 'woff2-')
+
 LIB_PREFIXES = ('lib', 'python-', 'lua-', 'ruby-', 'perl-', 'php-', 'haskell-')
 LIB_SUFFIXES = ('-dev', '-devel')
 
@@ -102,8 +104,8 @@ class IndexedPackage:
         name = self.name.lower()
         badges = []
 
-        # if self.repository not in OFFICIAL_REPOSITORIES:
-        #     badges.append(self.repository.lower())
+        if self.repository not in OFFICIAL_REPOSITORIES:
+            badges.append(self.repository.lower())
 
         if name.endswith(LIB_SUFFIXES) or name.startswith(LIB_PREFIXES):
             badges.append('lib')
@@ -116,6 +118,9 @@ class IndexedPackage:
 
         if self.name.endswith('-git'):
             badges.append('git')
+
+        if name.startswith(FONT_PREFIXES):
+            badges.append('font')
 
         if self.groups:
             # for g in self.groups:
