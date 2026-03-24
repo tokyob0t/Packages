@@ -1,4 +1,11 @@
 aiosqlite==0.22.1
+astroid==4.0.4
+dill==0.4.1
+mccabe==0.7.0
+platformdirs==4.9.4
 pyalpm==0.10.12
 pycairo==1.29.0
+pyenchant==3.3.0
 PyGObject==3.56.1
+PyPika==0.51.1
+tomlkit==0.14.0
