@@ -16,9 +16,9 @@ class File:
             Gio.File.new_for_path(path).make_directory_with_parents()
 
         if isinstance(contents, str):
-            contents = contents.encode("utf-8")
+            contents = contents.encode('utf-8')
 
-        if "a" in self.mode:
+        if 'a' in self.mode:
             self.append_stream = await self.gfile.append_to_async(
                 Gio.FileCreateFlags.REPLACE_DESTINATION,
                 GLib.PRIORITY_DEFAULT,
@@ -26,7 +26,7 @@ class File:
             return await self.append_stream.write_bytes_async(
                 GLib.Bytes.new(contents), GLib.PRIORITY_DEFAULT)
 
-        elif "w" in self.mode:
+        elif 'w' in self.mode:
             return await self.gfile.replace_contents_async(
                 contents,
                 None,
@@ -34,15 +34,15 @@ class File:
                 Gio.FileCreateFlags.REPLACE_DESTINATION,
             )
 
-        raise IOError("File not opened for writing")
+        raise IOError('File not opened for writing')
 
     async def read(self) -> str:
-        if "r" in self.mode:
+        if 'r' in self.mode:
             _, contents, _ = await self.gfile.load_contents_async()
 
-            return contents.decode("utf-8")
+            return contents.decode('utf-8')
 
-        raise IOError("File not opened for reading")
+        raise IOError('File not opened for reading')
 
     async def readLines(self) -> list[str]:
         return (await self.read()).splitlines()
