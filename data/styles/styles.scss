@@ -15,6 +15,7 @@ $theme-fg-color: #{"@theme_fg_color"};
 }
 
 @mixin badge-color($color) {
+  color: $color;
   background-color: alpha($color, 0.1);
 
   &:hover {
@@ -24,19 +25,17 @@ $theme-fg-color: #{"@theme_fg_color"};
   &:active {
     background-color: alpha($color, 0.26);
   }
-
-  label {
-    color: $color;
-  }
 }
 
 .badge {
   @include badge-color($fg);
+  padding: 0;
+  margin: 0;
+  font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.78em;
   font-weight: 500;
-  outline: unset;
 
   transition:
     background-color 120ms ease,
@@ -44,19 +43,9 @@ $theme-fg-color: #{"@theme_fg_color"};
 
   min-height: 0;
 
-  &:active {
-    transform: scale(0.96);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-  }
-
-  label {
-    padding: 0;
-    margin: 0;
-    font-weight: 600;
-  }
+  // &:active {
+  //   transform: scale(0.96);
+  // }
 }
 
 .aur-badge-color {
