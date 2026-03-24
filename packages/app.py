@@ -23,9 +23,12 @@ class ApplicationWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs: Adw.Application):
         super().__init__(**kwargs)
 
-        self.root = asztalify(Adw.NavigationView, setup=self.set_content)
+        self.root = asztalify(Adw.ToastOverlay, setup=self.set_content)
+
+        self.view = asztalify(Adw.NavigationView, setup=self.root.set_child)
+
         self.main = asztalify(Adw.NavigationPage,
-                              setup=self.root.add,
+                              setup=self.view.add,
                               title='Packages',
                               child=Adw.ToolbarView())
 
@@ -35,6 +38,9 @@ class ApplicationWindow(Adw.ApplicationWindow):
         self.settings_page = Gtk.ScrolledWindow()
 
         self.setup()
+
+    def add_toast(self, text: str):
+        self.root.add_toast(Adw.Toast.new(text))
 
     def setup(self):
 
@@ -71,6 +77,11 @@ class Application(Adw.Application):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    def copy_to_clipboard(self, text: str) -> None:
+        Gdk.Display.get_default().get_clipboard().set(text)
+
+        self.get_window_by_id(1).add_toast('Copied to clipboard!')
+
     def do_activate(self):
         Gtk.Application.set_default(self)
 
@@ -84,27 +95,30 @@ class Application(Adw.Application):
 
 
 def main(cfg: Config):
+    code: int
+
     try:
         with GLibEventLoopPolicy():
             app = Application(application_id=cfg.APPLICATION_ID,
                               version=cfg.VERSION)
-            return app.run()
-
+            code = app.run()
     except KeyboardInterrupt:
-        return 0
+        code = 0
     except Exception as e:
         sys.stderr.write(e)
         sys.stderr.flush()
 
-        return 1
+        code = 1
     finally:
         if packages := PackageIndexer.instance:
             packages.stop()
 
+    return code
+
 
 if __name__ == '__main__':
-    sys.exit(
-        main(
-            Config(APPLICATION_ID='xyz.application.Test',
-                   VERSION='0.1.0',
-                   SCHEMA_PATH='/xyz/application/Test')))
+    code = main(
+        Config(APPLICATION_ID='xyz.application.Test',
+               SCHEMA_PATH='/xyz/application/Test',
+               VERSION='0.1.0'))
+    sys.exit(code)
