@@ -6,33 +6,37 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import aiosqlite
-from gi.repository import Gio, GLib, Gtk
+from gi.repository import Gio, GLib
 from pyalpm import DB, Handle, Package
+from pypika import NULL, Column, Index, Order, Parameter
+from pypika import SQLLiteQuery as Query
+from pypika import Table
 from utils.requests import Requests as requests
 
-CACHE_DIR = os.path.expanduser("~/.cache/packages")
-DATABASE_PATH = os.path.join(CACHE_DIR, "packages.db")
+CACHE_DIR = os.path.expanduser('~/.cache/packages')
+DATABASE_PATH = os.path.join(CACHE_DIR, 'packages.db')
 
-OFFICIAL_REPOSITORIES = {"core", "extra", "community"}
+OFFICIAL_REPOSITORIES = {'core', 'extra', 'community'}
 
 FOSS = {
-    "mit", "gpl", "lgpl", "agpl", "apache", "bsd", "isc", "mpl", "zlib", "cc0",
-    "unlicense", "artistic", "wtfpl"
+    'mit', 'gpl', 'lgpl', 'agpl', 'apache', 'bsd', 'isc', 'mpl', 'zlib', 'cc0',
+    'unlicense', 'artistic', 'wtfpl'
 }
 
 PROPRIETARY = {
-    "proprietary", "eula", "commercial", "nvidia", "intel", "amd", "busl",
-    "sspl", "polyform", 'chrome', 'custom'
+    'proprietary', 'eula', 'commercial', 'nvidia', 'intel', 'amd', 'busl',
+    'sspl', 'polyform', 'chrome', 'custom'
 }
 
-LIB_PREFIXES = ("lib", "python-", "lua-", "ruby-", "perl-", "php-", 'haskell-')
-LIB_SUFFIXES = ("-dev", "-devel")
+LIB_PREFIXES = ('lib', 'python-', 'lua-', 'ruby-', 'perl-', 'php-', 'haskell-')
+LIB_SUFFIXES = ('-dev', '-devel')
 
 if not GLib.file_test(CACHE_DIR, GLib.FileTest.EXISTS | GLib.FileTest.IS_DIR):
     GLib.mkdir_with_parents(CACHE_DIR, 0o777)
 
-# data = resource.lookup_data('/com/example/myapp/init_db.sql', 0)
-# sql = data.get_data().decode('utf-8')  # convierte bytes a string
+
+def is_regex(q: str) -> bool:
+    return any(c in '.^$*+?{}[]|()' for c in q)
 
 
 class LicenseType:
@@ -46,11 +50,9 @@ class LicenseType:
         license_flag = cls.UNKNOWN
 
         for lic in licenses:
-            tokens = re.split(r'\s*(?:,|AND|OR|WITH|\(|\))\s*', lic)
-
-            for t in tokens:
-                t = t.strip().lower().replace("custom:",
-                                              "").replace("licenseref-", "")
+            for token in re.split(r'\s*(?:,|AND|OR|WITH|\(|\))\s*', lic):
+                t = token.strip().lower().replace('custom:', '').replace(
+                    'licenseref-', '')
                 if not t:
                     continue
 
@@ -93,18 +95,18 @@ class IndexedPackage:
 
     @property
     def installed(self) -> bool:
-        return not not self.installed_version
+        return bool(self.installed_version)
 
     @property
     def badges(self) -> list[str]:
         name = self.name.lower()
         badges = []
 
-        if self.repository not in OFFICIAL_REPOSITORIES:
-            badges.append(self.repository.lower())
+        # if self.repository not in OFFICIAL_REPOSITORIES:
+        #     badges.append(self.repository.lower())
 
         if name.endswith(LIB_SUFFIXES) or name.startswith(LIB_PREFIXES):
-            badges.append("lib")
+            badges.append('lib')
 
         if self.packager == 'Orphaned':
             badges.append('orphaned')
@@ -115,41 +117,46 @@ class IndexedPackage:
         if self.name.endswith('-git'):
             badges.append('git')
 
+        if self.groups:
+            # for g in self.groups:
+            #     badges.append(g)
+            badges.append(self.groups[0])
+
         return badges
 
     @staticmethod
     def _join(values: List[str]) -> Optional[str]:
         if values is not None:
-            return ",".join(values)
+            return ','.join(values)
 
     @classmethod
     def from_row(cls: 'IndexedPackage', row):
         return cls(
-            name=row["name"],
-            version=row["version"],
-            description=row["description"] or "(Unavailable)",
-            repository=row["repository"],
-            arch=row["arch"],
-            url=row["url"],
-            licenses=row["licenses"].split(",") if row["licenses"] else [],
-            groups=row["groups"].split(",") if row["groups"] else [],
-            depends=row["depends"].split(",") if row["depends"] else [],
-            optdepends=row["optdepends"].split(",")
-            if row["optdepends"] else [],
-            makedepends=row["makedepends"].split(",")
-            if row["makedepends"] else [],
-            checkdepends=row["checkdepends"].split(",")
-            if row["checkdepends"] else [],
-            provides=row["provides"].split(",") if row["provides"] else [],
-            conflicts=row["conflicts"].split(",") if row["conflicts"] else [],
-            replaces=row["replaces"].split(",") if row["replaces"] else [],
-            size=row["size"],
-            compressed_size=row["compressed_size"],
-            build_date=row["build_date"],
-            packager=row["packager"],
-            filename=row["filename"],
-            base=row["base"],
-            installed_version=row["installed_version"],
+            name=row['name'],
+            version=row['version'],
+            description=row['description'] or '(Unavailable)',
+            repository=row['repository'],
+            arch=row['arch'],
+            url=row['url'],
+            licenses=row['licenses'].split(',') if row['licenses'] else [],
+            groups=row['groups'].split(',') if row['groups'] else [],
+            depends=row['depends'].split(',') if row['depends'] else [],
+            optdepends=row['optdepends'].split(',')
+            if row['optdepends'] else [],
+            makedepends=row['makedepends'].split(',')
+            if row['makedepends'] else [],
+            checkdepends=row['checkdepends'].split(',')
+            if row['checkdepends'] else [],
+            provides=row['provides'].split(',') if row['provides'] else [],
+            conflicts=row['conflicts'].split(',') if row['conflicts'] else [],
+            replaces=row['replaces'].split(',') if row['replaces'] else [],
+            size=row['size'],
+            compressed_size=row['compressed_size'],
+            build_date=row['build_date'],
+            packager=row['packager'],
+            filename=row['filename'],
+            base=row['base'],
+            installed_version=row['installed_version'],
         )
 
     @classmethod
@@ -158,7 +165,7 @@ class IndexedPackage:
         return cls(
             name=pkg.name,
             version=pkg.version,
-            description=pkg.desc or "(Unavailable)",
+            description=pkg.desc or '(Unavailable)',
             repository=repository_name,
             arch=pkg.arch,
             url=pkg.url,
@@ -180,27 +187,27 @@ class IndexedPackage:
     @classmethod
     def from_aur_json(cls: 'IndexedPackage', p: dict):
         return cls(
-            name=p["Name"],
-            version=p["Version"],
-            description=p.get("Description") or "(Unavailable)",
-            repository="aur",
-            arch="any",
-            url=p.get("URL"),
-            licenses=p.get("License") or [],
-            groups=p.get("Groups") or [],
-            depends=p.get("Depends") or [],
-            optdepends=p.get("OptDepends") or [],
-            makedepends=p.get("MakeDepends") or [],
-            checkdepends=p.get("CheckDepends") or [],
-            provides=p.get("Provides") or [],
-            conflicts=p.get("Conflicts") or [],
-            replaces=p.get("Replaces") or [],
+            name=p['Name'],
+            version=p['Version'],
+            description=p.get('Description') or '(Unavailable)',
+            repository='aur',
+            arch='any',
+            url=p.get('URL'),
+            licenses=p.get('License') or [],
+            groups=p.get('Groups') or [],
+            depends=p.get('Depends') or [],
+            optdepends=p.get('OptDepends') or [],
+            makedepends=p.get('MakeDepends') or [],
+            checkdepends=p.get('CheckDepends') or [],
+            provides=p.get('Provides') or [],
+            conflicts=p.get('Conflicts') or [],
+            replaces=p.get('Replaces') or [],
             size=None,
             compressed_size=None,
-            build_date=p.get("LastModified"),
-            packager=p.get("Maintainer") or "Orphaned",
-            filename=p.get("URLPath"),
-            base=p.get("PackageBase"),
+            build_date=p.get('LastModified'),
+            packager=p.get('Maintainer') or 'Orphaned',
+            filename=p.get('URLPath'),
+            base=p.get('PackageBase'),
             installed_version=None,
         )
 
@@ -244,7 +251,7 @@ class PackageRepository(ABC):
 
 
 class PacmanRepository(PackageRepository):
-    HANDLE = Handle("/", "/var/lib/pacman")
+    HANDLE = Handle('/', '/var/lib/pacman')
     LOCALDB = HANDLE.get_localdb()
 
     def __init__(self, name: str):
@@ -263,21 +270,21 @@ class PacmanRepository(PackageRepository):
 
     @staticmethod
     def list_repositories():
-        sync_dir = "/var/lib/pacman/sync"
+        sync_dir = '/var/lib/pacman/sync'
         return [
-            f.removesuffix(".db") for f in os.listdir(sync_dir)
-            if f.endswith(".db")
+            f.removesuffix('.db') for f in os.listdir(sync_dir)
+            if f.endswith('.db')
         ]
 
 
 class AurRepository(PackageRepository):
-    # PACKAGES_META_URL = "https://aur.archlinux.org/packages-meta-v1.json.gz"
-    PACKAGES_META_URL = "https://aur.archlinux.org/packages-meta-ext-v1.json.gz"
+    # PACKAGES_META_URL = 'https://aur.archlinux.org/packages-meta-v1.json.gz'
+    PACKAGES_META_URL = 'https://aur.archlinux.org/packages-meta-ext-v1.json.gz'
     CHUNK_SIZE = 256 * 1024
 
     @property
     def name(self):
-        return "aur"
+        return 'aur'
 
     async def sync(self) -> list[IndexedPackage]:
         r = await requests.get(self.PACKAGES_META_URL)
@@ -296,18 +303,17 @@ class AurRepository(PackageRepository):
             gbytes = await stream.read_bytes_async(self.CHUNK_SIZE,
                                                    GLib.PRIORITY_DEFAULT)
 
-        json_data = json.loads(b"".join(data))
+        json_data = json.loads(b''.join(data))
         return [IndexedPackage.from_aur_json(p) for p in json_data]
 
 
 class PackageIndexer:
-    instance: "PackageIndexer | None" = None
+    instance: 'PackageIndexer | None' = None
     ROWS_LIMIT = 50
 
     def __init__(self):
-        self.repositories = [
-            PacmanRepository(r) for r in PacmanRepository.list_repositories()
-        ]
+        self.repositories = list(
+            map(PacmanRepository, PacmanRepository.list_repositories()))
         self.repositories.append(AurRepository())
         self.db: Optional[aiosqlite.Connection] = None
 
@@ -315,12 +321,12 @@ class PackageIndexer:
         self.db = await aiosqlite.connect(DATABASE_PATH)
         self.db.row_factory = aiosqlite.Row
 
-        def sqlite_regexp(pattern: str, value: str) -> bool:
+        def REGEXP(pattern: str, value: str) -> bool:
             if value is None:
                 return False
             return re.search(pattern, value) is not None
 
-        await self.db.create_function("REGEXP", 2, sqlite_regexp)
+        await self.db.create_function('REGEXP', 2, REGEXP)
 
     async def close(self):
         if self.db:
@@ -331,57 +337,56 @@ class PackageIndexer:
             return self.db.stop()
 
     async def init_schema(self):
-        await self.db.execute("""
-        CREATE TABLE IF NOT EXISTS packages (
-            name TEXT,
-            version TEXT,
-            description TEXT,
-            repository TEXT,
-            arch TEXT,
-            url TEXT,
-            licenses TEXT,
-            groups TEXT,
-            depends TEXT,
-            optdepends TEXT,
-            makedepends TEXT,
-            checkdepends TEXT,
-            provides TEXT,
-            conflicts TEXT,
-            replaces TEXT,
-            size INTEGER,
-            compressed_size INTEGER,
-            build_date INTEGER,
-            packager TEXT,
-            filename TEXT,
-            base TEXT,
-            installed_version TEXT,
-            PRIMARY KEY(name, repository, version)
-        )
-        """)
-        await self.db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_packages_name ON packages(name)")
+        pkgs = Table('packages')
+        idx_packages_name = Index('idx_packages_name')
+
+        q = Query.create_table(pkgs).if_not_exists().columns(
+            Column('name', 'TEXT', nullable=False),
+            Column('version', 'TEXT', nullable=False),
+            ('description', 'TEXT'),
+            Column('repository', 'TEXT', nullable=False),
+            ('arch', 'TEXT'),
+            ('url', 'TEXT'),
+            ('licenses', 'TEXT'),
+            ('groups', 'TEXT'),
+            ('depends', 'TEXT'),
+            ('optdepends', 'TEXT'),
+            ('makedepends', 'TEXT'),
+            ('checkdepends', 'TEXT'),
+            ('provides', 'TEXT'),
+            ('conflicts', 'TEXT'),
+            ('replaces', 'TEXT'),
+            ('size', 'INTEGER'),
+            ('compressed_size', 'INTEGER'),
+            ('build_date', 'INTEGER'),
+            ('packager', 'TEXT'),
+            ('filename', 'TEXT'),
+            ('base', 'TEXT'),
+            ('installed_version', 'TEXT'),
+        ).primary_key('name', 'repository', 'version')
+
+        await self.db.execute(q.get_sql())
+
+        q = Query.create_index(idx_packages_name).if_not_exists().on(
+            pkgs).columns(pkgs.name)
+
+        await self.db.execute(q.get_sql())
         await self.db.commit()
 
     async def sync(self):
         await self.init_schema()
-        await self.db.execute("BEGIN")
+        await self.db.execute('BEGIN')
 
-        for provider in self.repositories:
-            packages = await provider.sync()
+        pkgs = Table('packages')
 
+        q = Query.into(pkgs).insert_or_replace(*list(
+            Parameter('?') for _ in range(22)))
+
+        for repo in self.repositories:
+            packages = await repo.sync()
             rows = [p.to_row() for p in packages]
 
-            await self.db.executemany(
-                """
-                INSERT OR REPLACE INTO packages VALUES (
-                    ?,?,?,?,?,?,
-                    ?,?,?,?,?,?,?,?,
-                    ?,?,?,?,?,?,
-                    ?,?
-                )
-                """,
-                rows,
-            )
+            await self.db.executemany(q.get_sql(), rows)
 
         await self.db.commit()
 
@@ -389,80 +394,106 @@ class PackageIndexer:
         installed_pkgs = [(pkg.name, pkg.version)
                           for pkg in PacmanRepository.LOCALDB.pkgcache]
 
-        await self.db.execute("BEGIN")
+        pkgs = Table('packages')
+        temp_installed = Table('temp_installed')
 
-        await self.db.execute("""
-            UPDATE packages
-            SET installed_version = NULL
-        """)
+        await self.db.execute('BEGIN')
 
-        await self.db.execute("""
-            CREATE TEMP TABLE temp_installed (
-                name TEXT PRIMARY KEY,
-                version TEXT
-            )
-        """)
+        q = Query.update(pkgs).set(pkgs.installed_version, NULL)
 
-        await self.db.executemany(
-            "INSERT INTO temp_installed (name, version) VALUES (?, ?)",
-            installed_pkgs)
+        await self.db.execute(q.get_sql())
 
-        await self.db.execute("""
-            UPDATE packages
-            SET installed_version = (
-                    SELECT version
-                    FROM temp_installed
-                    WHERE temp_installed.name = packages.name
-                )
-            WHERE name IN (SELECT name FROM temp_installed)
-        """)
+        q = Query.create_table('temp_installed').temporary().columns(
+            ('name', 'TEXT'), ('version', 'TEXT')).primary_key('name')
 
-        await self.db.execute("DROP TABLE temp_installed")
+        await self.db.execute(q.get_sql())
+
+        q = Query.into(temp_installed).columns('name', 'version').insert(
+            Parameter('?'), Parameter('?'))
+
+        await self.db.executemany(q.get_sql(), installed_pkgs)
+
+        q = Query.from_(temp_installed).update(pkgs).set(
+            pkgs.installed_version,
+            temp_installed.version).where(temp_installed.name == pkgs.name)
+
+        await self.db.execute(q.get_sql())
+
+        q = Query.drop_table(temp_installed)
+
+        await self.db.execute(q.get_sql())
 
         await self.db.commit()
 
     async def search(self, query: str) -> list[IndexedPackage]:
-        is_regex = True
+        query = query.strip()
 
-        try:
-            re.compile(query)
-        except re.error:
-            is_regex = False
+        if not query:
+            return []
 
-        if is_regex:
-            sql = "SELECT * FROM packages WHERE name REGEXP ? LIMIT ?"
-            params = (query, self.ROWS_LIMIT)
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select('*')
+
+        params = []
+
+        if is_regex(query):
+            q = q.where(pkgs.name.regexp(Parameter('?')))
+            params.append(query)
+
         else:
-            # fallback tipo búsqueda "normal"
-            like_query = f"%{query}%"
-            sql = "SELECT * FROM packages WHERE name LIKE ? LIMIT ?"
-            params = (like_query, self.ROWS_LIMIT)
+            tokens = query.split()
 
-        async with self.db.execute(sql, params) as cursor:
+            q = q.where(pkgs.name.like(Parameter('?')))
+
+            params.append(f'{tokens.pop(0)}%')
+
+            if tokens:
+                for t in tokens:
+                    q = q.where(
+                        pkgs.name.like(Parameter('?'))
+                        | pkgs.description.like(Parameter('?')))
+
+                    params.extend((f'%{t}%', f'%{t}%'))
+
+        q = q.limit(Parameter('?'))
+
+        params.append(self.ROWS_LIMIT)
+
+        async with self.db.execute(q.get_sql(), params) as cursor:
             return [IndexedPackage.from_row(row) async for row in cursor]
 
-    async def get(self, name: str) -> list[IndexedPackage]:
-        async with self.db.execute(
-                "SELECT * FROM packages WHERE name = ?",
-            (name, ),
-        ) as cursor:
-            return [IndexedPackage.from_row(row) async for row in cursor]
+    async def get(self, name: str) -> IndexedPackage | None:
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select('*').where(
+            pkgs.name == Parameter('?')).limit(1)
+
+        async with self.db.execute(q.get_sql(), (name, )) as cursor:
+            if row := await cursor.fetchone():
+                return IndexedPackage.from_row(row)
 
     async def get_random(self, limit: int = 1) -> IndexedPackage | None:
-        async with self.db.execute(
-                "SELECT * FROM packages ORDER BY RANDOM() LIMIT ?",
-            (limit, )) as cursor:
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select('*').orderby('RANDOM()').limit(
+            Parameter('?'))
+
+        async with self.db.execute(q.get_sql(), (limit, )) as cursor:
             return [IndexedPackage.from_row(row) async for row in cursor]
 
     async def get_installed(self) -> list[IndexedPackage]:
-        async with self.db.execute(
-                "SELECT * FROM packages WHERE installed_version IS NOT NULL"
-        ) as cursor:
+        pkgs = Table('packages')
+
+        q = Query.from_(pkgs).select('*').where(
+            pkgs.installed_version.isnotnull())
+
+        async with self.db.execute(q.get_sql()) as cursor:
             return [IndexedPackage.from_row(row) async for row in cursor]
 
     @property
     def loaded_repositories(self) -> list[str]:
-        return [prov.name for prov in self.repositories]
+        return [repo.name for repo in self.repositories]
 
     @staticmethod
     async def get_default():
