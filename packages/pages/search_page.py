@@ -2,8 +2,8 @@ import re
 import sys
 
 from gi.events import GLibTask
-from gi.repository import Adw, Gio, GLib, Gtk
-from utils import PackageIndexer, asztalify, task
+from gi.repository import Adw, Gio, GLib, GObject, Gtk
+from utils import PackageIndexer, asztalify, idle, task
 from utils.packages import IndexedPackage
 
 
@@ -13,28 +13,6 @@ class SpecialIcons:
     @classmethod
     def get(cls, package_name: str, fallback: str) -> str | None:
         return getattr(cls, package_name, fallback)
-
-
-def timeout(interval: int, cb: callable, *args) -> callable:
-
-    def on_timeout():
-        cb(*args)
-        return GLib.SOURCE_REMOVE
-
-    id = GLib.timeout_add(interval, on_timeout)
-
-    return lambda: GLib.source_remove(id)
-
-
-def idle(cb: callable, *args):
-
-    def on_called():
-        cb(*args)
-        return GLib.SOURCE_REMOVE
-
-    id = GLib.idle_add(on_called)
-
-    return lambda: GLib.source_remove(id)
 
 
 def format_version(version: str) -> str:  # X:X.X.X-X -> X.X.X
@@ -52,89 +30,105 @@ def format_size(size: int | None) -> str:
     return f'{size:.1f} TiB'
 
 
-def is_regex(query: str) -> bool:
-    return any(c in ".^$*+?{}[]|()" for c in query)
+class PackageRow(Adw.ExpanderRow):
+    package = GObject.Property(type=object,
+                               flags=GObject.ParamFlags.CONSTRUCT_ONLY
+                               | GObject.ParamFlags.READWRITE)
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-def PropertyRow(title: str,
-                subtitle: str,
-                activatable_widget: Gtk.Widget = None,
-                suffix: Gtk.Widget = None,
-                **kwargs):
-    action_row = asztalify(Adw.ActionRow,
-                           title=title,
-                           subtitle=GLib.markup_escape_text(subtitle),
-                           css_classes=['property'],
-                           **kwargs)
+        if 'package' not in kwargs:
+            raise TypeError(
+                "PackageRow missing required positional argument: 'package'")
 
-    if suffix:
-        action_row.add_suffix(suffix)
-    if activatable_widget:
-        action_row.set_activatable_widget(activatable_widget)
+        self.setup()
 
-    return action_row
+    @task
+    async def setup(self):
+        pkg = self.get_package()
+        self.set_title(pkg.name)
+        self.set_subtitle(GLib.markup_escape_text(pkg.description))
 
+        self.add_property_row('Repository', pkg.repository)
+        self.add_property_row('Repository', pkg.repository)
 
-class _PackageRow(Adw.ExpanderRow):
-    __gtype_name__ = 'PackageRow'
+        if pkg.arch != 'any':
+            self.add_property_row('Architecture', pkg.arch)
 
-    def __init__(self, package: IndexedPackage, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        self.add_property_row('Packager', pkg.packager)
+        self.add_property_row('Licenses', ' '.join(pkg.licenses))
 
+        if pkg.optdepends:
+            deps = [s.partition(':')[0] for s in pkg.optdepends]
 
-def PackageRow(package: IndexedPackage, on_row_expanded: callable,
-               on_installed: callable):
-    row = asztalify(Adw.ExpanderRow,
-                    title=package.name,
-                    subtitle=GLib.markup_escape_text(package.description),
-                    on_notify_expanded=on_row_expanded)
+            regex = f'^({' | '.join(deps)})(-git)?$'
 
-    row.add_row(PropertyRow(title='Repository', subtitle=package.repository))
+            self.add_property_row(
+                'Optional dependencies',
+                ', '.join(deps),
+                activatable=True,
+                tooltip_text='Copy as regex',
+                suffix=Gtk.Image.new_from_icon_name('edit-copy-symbolic'),
+                on_activated=lambda _: Gtk.Application.get_default(
+                ).copy_to_clipboard(regex))
 
-    if package.arch != 'any':
-        row.add_row(PropertyRow(title='Architecture', subtitle=package.arch))
+        if pkg.url:
+            self.add_property_row(title='URL',
+                                  subtitle=pkg.url,
+                                  activatable=True,
+                                  suffix=Gtk.Image.new_from_icon_name(
+                                      'adw-external-link-symbolic'),
+                                  on_activated=lambda _: Gio.AppInfo.
+                                  launch_default_for_uri(pkg.url))
 
-    row.add_row(PropertyRow(title='Packager', subtitle=package.packager))
-    row.add_row(
-        PropertyRow(title='Licenses', subtitle=' '.join(package.licenses)))
+        if pkg.installed:
+            self.add_suffix(
+                Gtk.Image.new_from_icon_name(
+                    SpecialIcons.get(pkg.name, 'checkmark-small-symbolic')))
 
-    if package.optdepends:
+        box = asztalify(Gtk.Box,
+                        setup=self.add_suffix,
+                        spacing=3,
+                        valign='CENTER')
 
-        row.add_row(
-            PropertyRow(title='Optional dependencies',
-                        subtitle=', '.join(
-                            s.partition(':')[0] for s in package.optdepends)))
+        for badge in pkg.badges:
+            box.append(child=Gtk.Label(
+                label=badge, css_classes=['badge', f'{badge}-badge-color']))
+        self.add_property_row(
+            suffix=asztalify(Gtk.Button,
+                             label="An ugly install button that doesn't work",
+                             valign='CENTER',
+                             on_clicked=lambda _: self.emit('installed'),
+                             css_classes=['suggested-action']))
 
-    if package.url:
-        row.add_row(
-            PropertyRow(title='URL',
-                        subtitle=package.url,
-                        activatable=True,
-                        suffix=Gtk.Image.new_from_icon_name(
-                            'adw-external-link-symbolic'),
-                        on_activated=lambda _: Gio.AppInfo.
-                        launch_default_for_uri(package.url)))
+    @GObject.Signal(flags=GObject.SignalFlags.RUN_LAST)
+    def installed(self) -> None:
+        ...
 
-    if package.installed:
-        row.add_suffix(
-            Gtk.Image.new_from_icon_name(
-                SpecialIcons.get(package.name, 'checkmark-small-symbolic')))
+    def get_package(self) -> IndexedPackage:
+        return self.props.package
 
-    flow = asztalify(Gtk.FlowBox,
-                     setup=row.add_suffix,
-                     row_spacing=3,
-                     column_spacing=3,
-                     min_children_per_line=3,
-                     max_children_per_line=3,
-                     selection_mode='NONE',
-                     valign='CENTER')
+    def add_property_row(self,
+                         title: str | None = None,
+                         subtitle: str | None = None,
+                         activatable_widget: Gtk.Widget = None,
+                         suffix: Gtk.Widget = None,
+                         **kwargs) -> None:
 
-    for badge in package.badges:
-        flow.append(
-            Gtk.FlowBoxChild(css_classes=['badge', f'{badge}-badge-color'],
-                             child=Gtk.Label.new(badge)))
+        action_row = asztalify(Adw.ActionRow,
+                               title=title,
+                               subtitle=subtitle
+                               and GLib.markup_escape_text(subtitle),
+                               css_classes=['property'],
+                               **kwargs)
 
-    return row
+        if suffix:
+            action_row.add_suffix(suffix)
+        if activatable_widget:
+            action_row.set_activatable_widget(activatable_widget)
+
+        self.add_row(action_row)
 
 
 class SearchPage(Gtk.Box):
@@ -170,7 +164,7 @@ class SearchPage(Gtk.Box):
 
     @task
     async def setup(self):
-        self.packages = await PackageIndexer.get_default()
+        packages = await PackageIndexer.get_default()
 
         main_box = asztalify(Gtk.Box,
                              orientation='VERTICAL',
@@ -207,7 +201,7 @@ class SearchPage(Gtk.Box):
         header.get_child().append(
             Gtk.Label(label=(
                 'Enter a keyword to search.\n'
-                f'Currently loaded repositories: {", ".join(self.packages.loaded_repositories)}'
+                f'Currently loaded repositories: {", ".join(packages.get_loaded_repositories())}'
             ),
                       wrap=True,
                       css_classes=['body'],
@@ -215,8 +209,9 @@ class SearchPage(Gtk.Box):
 
         searcher = Adw.Clamp(tightening_threshold=400,
                              maximum_size=600,
-                             child=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
-                                           spacing=10))
+                             child=Gtk.Box(
+                                 orientation=Gtk.Orientation.VERTICAL,
+                                 spacing=10))
 
         searcher.get_child().append(self.search_entry)
 
@@ -227,21 +222,24 @@ class SearchPage(Gtk.Box):
 
         self.content.set_child(main_box)
 
-        self.initial_packages = await self.packages.get_random(11)
+        self.initial_packages = await packages.get_random(10)
 
         if not self.initial_packages:
             return
 
-        self.search_entry.set_placeholder_text(self.initial_packages[-1].name)
-        self.append_results(self.initial_packages[:-1])
+        self.search_entry.set_placeholder_text(
+            f'Search across {await packages.get_count()} packages...')
+
+        self.append_results(self.initial_packages)
 
         idle(self.search_entry.grab_focus)
 
     @task
-    async def do_search(self, text: str):
+    async def search(self, text: str):
+        packages = await PackageIndexer.get_default()
         try:
             self.recently_searched.clear()
-            self.recently_searched.extend(await self.packages.search(text))
+            self.recently_searched.extend(await packages.search(text))
 
             self.cleanup_results()
             self.append_results(self.recently_searched[:10])
@@ -255,9 +253,12 @@ class SearchPage(Gtk.Box):
 
     def append_results(self, results: list[IndexedPackage]):
         for package in results:
-            row = PackageRow(package,
-                             on_row_expanded=self.on_row_expanded,
-                             on_installed=self.on_install)
+            row = asztalify(
+                PackageRow,
+                package=package,
+                on_installed=self.on_installed,
+                on_notify_expanded=self.on_row_expanded,
+            )
 
             self.search_results.add(row)
             self.search_results_rows.append(row)
@@ -279,15 +280,13 @@ class SearchPage(Gtk.Box):
         if self.search_task and not self.search_task.done():
             self.search_task.cancel()
 
-        self.search_task = self.do_search(text)
-
-        # self.on_search_stopped()
+        self.search_task = self.search(text)
 
     def on_search_started(self, _: Gtk.TextBuffer, pspec) -> None:
         text = self.search_entry.get_text().strip()
         image = self.search_entry.get_first_child()
 
-        if is_regex(text):
+        if any(c in ".^$*+?{}[]|()" for c in text):  # is-regex
             image.set_from_icon_name('regex-symbolic')
         else:
             image.set_from_icon_name('system-search-symbolic')
@@ -299,5 +298,9 @@ class SearchPage(Gtk.Box):
         for r in filter(lambda r: r != row, self.search_results_rows):
             r.set_expanded(False)
 
-    def on_install(self, _: Adw.ExpanderRow, package: IndexedPackage):
-        print(package.name, package.url)
+    def on_installed(self, row: PackageRow):
+        pkg = row.get_package()
+        print(pkg.name, pkg.url)
+        # pkg = pkg_row.get_package()
+
+        # print(pkg.name, pkg.url)
