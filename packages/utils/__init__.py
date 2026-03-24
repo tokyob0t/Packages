@@ -3,7 +3,7 @@ from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any
 
-from gi.repository import GObject, Gtk
+from gi.repository import GLib, GObject, Gtk
 from utils.config import Config
 from utils.file import File as file
 from utils.packages import PackageIndexer
@@ -22,6 +22,28 @@ def task(fn: callable):
         return asyncio.create_task(fn(*args, **kwargs))
 
     return wrapper
+
+
+def timeout(interval: int, cb: callable, *args) -> callable:
+
+    def on_timeout():
+        cb(*args)
+        return GLib.SOURCE_REMOVE
+
+    id = GLib.timeout_add(interval, on_timeout)
+
+    return lambda: GLib.source_remove(id)
+
+
+def idle(cb: callable, *args):
+
+    def on_called():
+        cb(*args)
+        return GLib.SOURCE_REMOVE
+
+    id = GLib.idle_add(on_called)
+
+    return lambda: GLib.source_remove(id)
 
 
 class EnumMap:  # string -> Enum
@@ -113,11 +135,24 @@ class PropMap:
 
 
 def asztalify(ctor: Gtk.Widget, **kwargs):
-    widget = ctor(visible=kwargs.get('visible', True))
-
     setup = kwargs.pop('setup', None)
 
+    ctor_kwargs = {}
+    post_ctor_kwargs = {}
+
     for key, value in kwargs.items():
+        if key.startswith('on_') or key.startswith('on_notify'):
+            post_ctor_kwargs[key] = value
+        elif (enum := EnumMap.map(key, value)) is not None:
+            ctor_kwargs[key] = enum
+        else:
+            ctor_kwargs[key] = value
+
+    ctor_kwargs.setdefault('visible', True)
+
+    widget = ctor(**ctor_kwargs)
+
+    for key, value in post_ctor_kwargs.items():
         if key.startswith('on_notify'):
 
             def on_notified(this: Gtk.Widget, pspec: GObject.ParamSpec):
@@ -125,15 +160,11 @@ def asztalify(ctor: Gtk.Widget, **kwargs):
 
             prop = key.removeprefix('on_notify_').replace('_', '-')
             widget.connect('notify::' + prop, on_notified)
-
         elif key.startswith('on_'):
             signal = key.removeprefix('on_').replace('_', '-')
-
             widget.connect(signal, value)
         elif PropMap.apply(widget, key, value):
             continue
-        elif (enum := EnumMap.map(key, value)) is not None:
-            setattr(widget.props, key, enum)
         else:
             setattr(widget.props, key, value)
 
