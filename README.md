@@ -74,4 +74,4 @@ Contributions are welcome! You can help by:
 * Improving scripts
 * Adding features or translations
 
-Please fork the [repo](https://github.com/tokyob0t/Packages), make changes, and submit a pull request.
+Please fork the [repo](https://github.com/tokyob0t/Packages/fork), make changes, and submit a pull request.
